@@ -7,8 +7,14 @@
 elrond_wasm_node::wasm_endpoints! {
     niftysubs
     (
-        add
-        getSum
+        createDiscount
+        createService
+        getFullDiscountData
+        getFullServiceData
+        isPaused
+        pause
+        setCutPercentage
+        unpause
     )
 }
 

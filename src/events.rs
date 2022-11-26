@@ -6,17 +6,33 @@ use super::service::{Service};
 #[allow(clippy::too_many_arguments)]
 #[elrond_wasm::module]
 pub trait EventsModule {
-    fn emit_create_service_event(self, service_id: u64, service: Auction<Self::Api>){
+    fn emit_create_service_event(self, service_id: u64, service: Service<Self::Api>){
         self.create_service_event(
             &service.owner,
-            service.payment_token.token_identifier,
-            service.payment_token.token_nonce,
+            service_id,
+            service.payment_token,
+            service.payment_nonce,
+            &service.price,
             service.payment_period,
-            service.payments_total,
+            &service.payments_total,
             service.contract_cut_percentage,
-            &service.discount_id.unwrap_or_else(u64::zero), // means there's no discount.
-            &service.service_name.unwrap_or_else(u64::zero), // means there's no service name.
-            &service.service_webpage.unwrap_or_else(u64::zero) // means there's no website
+            &service.service_name, // means there's no service name.
+            &service.service_webpage // means there's no website
         );
     }
+
+    #[event("create_service_event")]
+    fn create_service_event(
+        &self,
+        #[indexed] owner: &ManagedAddress,
+        #[indexed] service_id: u64,
+        #[indexed] payment_token: EgldOrEsdtTokenIdentifier,
+        #[indexed] payment_nonce: u64,
+        #[indexed] price: &BigUint,
+        #[indexed] payment_period: u64,
+        #[indexed] payments_total: &BigUint,
+        contract_cut_percentage: BigUint,
+        #[indexed] service_name: &ManagedBuffer, // means there's no service name.
+        #[indexed] service_webpage: &ManagedBuffer // means there's no website
+    );
 }
