@@ -9,12 +9,17 @@ elrond_wasm_node::wasm_endpoints! {
     (
         createDiscount
         createService
+        getContractCutPercentage
         getFullDiscountData
         getFullServiceData
+        getLastValidServiceId
+        getServiceById
+        getServicesByAddress
         isPaused
         pause
         setCutPercentage
         unpause
+        updateService
     )
 }
 

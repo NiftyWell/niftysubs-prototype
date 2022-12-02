@@ -3,7 +3,6 @@
 elrond_wasm::imports!();
 
 use crate::service::PERCENTAGE_TOTAL;
-
 pub mod service;
 pub mod events;
 pub mod discount;
@@ -18,8 +17,7 @@ pub trait NiftySubs:
     + elrond_wasm_modules::pause::PauseModule
 {
     #[init]
-    fn init(&self, contract_cut_percentage:u64){
-        self.set_contract_cut_percentage(contract_cut_percentage);
+    fn init(&self){
     }
 
     #[only_owner]
