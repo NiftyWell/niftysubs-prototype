@@ -9,6 +9,7 @@ elrond_wasm_node::wasm_endpoints! {
     (
         createDiscount
         createService
+        getClaimableById
         getContractCutPercentage
         getFullDiscountData
         getFullServiceData
@@ -17,6 +18,7 @@ elrond_wasm_node::wasm_endpoints! {
         getServicesByAddress
         isPaused
         pause
+        setCustomCut
         setCutPercentage
         unpause
         updateService

@@ -68,9 +68,23 @@ getCutPercentage()
 }
 
 getServiceById(){
-    local id=0x03
+    local id=0x04
     res=$(erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getServiceById" --arguments $id)
     ./niftysubs/interaction/scripts/parser.py "--parseService" $res $id
+}
+
+
+getLastValidServiceId(){
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getLastValidServiceId"
+}
+
+getServicesByAddress(){
+    local service_address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getServicesByAddress" --arguments $service_address
+}
+
+getContractCutPercentage(){
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getContractCutPercentage"
 }
 
 getSftStackOwner(){
@@ -223,7 +237,7 @@ updateService(){
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=10000000 --function="updateService" \
     --arguments \
-        3 \
+        4 \
         0x45474c44 \
         0x \
         1000000000000000000 \
@@ -231,9 +245,19 @@ updateService(){
         30 \
         0x74686973697361666169726c796c6f6e676e616d6574686174696d676f696e67746f757365746f7665726966797468656c656e6774686c696d697474 \
         0x74686973697361666169726c796c6f6e676e616d6574686174696d676f696e67746f757365746f7665726966797468656c656e6774686c696d6974742e636f6d \
+        0 \
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
 }
 
+setCustomCut(){
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=10000000 --function="setCustomCut" \
+    --arguments \
+        4 \
+        0x01 \
+        0x00 \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}   
+}
 
 # ALLOWTYPE SETTER
 # None == 00

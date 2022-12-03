@@ -31,6 +31,7 @@ def serviceToText(res):
     74657374736572766963652e636f6d #service page
     """
     res = res.replace('"', '')
+    print(res)
 
     # variable sizes:
     address_length = 64
@@ -38,7 +39,9 @@ def serviceToText(res):
     nonce_size = 8*2
     price_length = 4*2
     payment_period = 8*2
-    contract_cut_length = 8*2
+    payments_total_length = 4*2
+    custome_cut = 2
+    contract_cut_length = 4*2
     service_name_length = 4*2
     service_page_length = 4*2
     
@@ -63,27 +66,44 @@ def serviceToText(res):
 
     payment_period_val = str(int('0x'+res[up_to_type:up_to_type+payment_period], 16)) # hex
     up_to_payment_period = up_to_type+payment_period
+    payments_total_size = int('0x'+res[up_to_payment_period:up_to_payment_period+payments_total_length], 16)*2
+    payments_total_val = 0
+    if payments_total_size != 0:
+        payments_total_val = int('0x'+res[up_to_payment_period+payments_total_length:up_to_payment_period+payments_total_length+payments_total_size], 16)
+    up_to_payments_total = up_to_payment_period+payments_total_length+payments_total_size
 
-    contract_cut_size = int('0x'+res[up_to_payment_period:up_to_payment_period+contract_cut_length], 16)*2
-    contract_cut_hex = '0x'+res[up_to_payment_period+contract_cut_length:up_to_payment_period+contract_cut_length+contract_cut_size] # hex
-    up_to_cut = up_to_payment_period+contract_cut_length+contract_cut_size
+    custome_cut =res[up_to_payments_total:up_to_payments_total+custome_cut]
 
+    if custome_cut == '00':
+        custome_cut = "False"
+    else: 
+        custome_cut = "True"
+    up_to_custom_cut = up_to_payments_total+2
+    contract_cut_size = int('0x'+res[up_to_custom_cut:up_to_custom_cut+contract_cut_length], 16)*2
+    contract_cut_hex = '0x'+res[up_to_custom_cut+contract_cut_length:up_to_custom_cut+contract_cut_length+contract_cut_size] # hex
+    up_to_cut = up_to_custom_cut+contract_cut_length+contract_cut_size
+    
     service_name_size = int('0x'+res[up_to_cut:up_to_cut+service_name_length], 16)*2
     service_name_hex = res[up_to_cut+service_name_length:up_to_cut+service_name_length+service_name_size] # hex
     up_to_service_name = up_to_cut+service_name_length+service_name_size
 
     service_page_size = int('0x'+res[up_to_service_name:up_to_service_name+service_page_length], 16)*2
     service_page_hex = res[up_to_service_name+service_page_length:up_to_service_name+service_page_length+service_page_size] # hex
+    up_to_page = up_to_service_name+service_page_length+service_page_size
+    grace_period = str(int(res[up_to_page: up_to_page+payment_period]), 16)
+    
     ticker = bytearray.fromhex(ticker_hex).decode()
     nonce = str(int(nonce_hex, 16))
     price = str(int(price_hex, 16))
-
+    
     payment_period = payment_period_val
-    contract_cut = str(int(contract_cut_hex, 16))
+    payments_total = payments_total_val
+    if contract_cut_hex != '0x':
+        contract_cut = str(int(contract_cut_hex, 16))
+    contract_cut = 0
     service_name = bytearray.fromhex(service_name_hex).decode()
     service_page = bytearray.fromhex(service_page_hex).decode()
-
-
+    
     if len(nonce)%2!=0:
         nonce = '0'+nonce
 
@@ -101,11 +121,13 @@ def serviceToText(res):
     print(f'{space}Service price: {float(price)*10**-18} token')
     print(f'{space}Service period type: {period_type}')
     print(f'{space}Service period: {payment_period}')
+    print(f'{space}Service total payments: {payments_total}')
+    print(f'{space}Custom cut: {custome_cut}')
     print(f'{space}Service contract cut: {contract_cut}')
     print(f'{space}Service name: {service_name}')
     print(f'{space}Service page: {service_page}')
+    print(f'{space}Service grace period: {grace_period}')
     print(f"{space}----------")
-    print()
 
 def nftToText(res):
     #000000105354414b454e4654532d39373437343200000000000000058bd743360c5b4eae01e126aa0f0309793d626f552e06252b7a4cb399bf651499000000000000000000000000000005350000000000000535

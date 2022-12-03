@@ -13,9 +13,11 @@ pub struct Service<M: ManagedTypeApi> {
         pub period_type: PeriodType,
         pub payment_period: u64,
         pub payments_total: BigUint<M>,
+        pub custom_cut: bool,
         pub contract_cut_percentage: BigUint<M>,
         pub service_name: ManagedBuffer<M>,
         pub service_webpage: ManagedBuffer<M>,
+        pub grace_period: u64
 }
 
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, TypeAbi, PartialEq, Clone)]
@@ -42,6 +44,7 @@ pub trait ServiceModule:
         payment_period: u64,
         opt_service_name: OptionalValue<ManagedBuffer>,
         opt_service_webpage: OptionalValue<ManagedBuffer>,
+        opt_grace_period: OptionalValue<u64>
     ) -> u64 {
         self.require_not_paused();
         require!(
@@ -92,6 +95,13 @@ pub trait ServiceModule:
                 .into_option()
                 .unwrap_or_default()
         };
+        let mut grace_period = 0u64;
+        match opt_grace_period{
+            OptionalValue::Some(period) => {
+                grace_period = period;
+            },
+            OptionalValue::None => ()
+        }
 
         let service = Service {
             owner:  self.blockchain().get_caller(),
@@ -101,9 +111,11 @@ pub trait ServiceModule:
             period_type: period_type,
             payment_period: payment_period,
             payments_total: BigUint::zero(),
+            custom_cut: false,
             contract_cut_percentage: self.contract_cut_percentage().get(),
             service_name: service_name,
             service_webpage: service_webpage,
+            grace_period: grace_period,
         };
 
         self.service_by_id(service_id).set(&service);
@@ -125,6 +137,7 @@ pub trait ServiceModule:
         opt_payment_period: OptionalValue<u64>,
         opt_service_name: OptionalValue<ManagedBuffer>,
         opt_service_webpage: OptionalValue<ManagedBuffer>,
+        opt_grace_period: OptionalValue<u64>
     ) -> u64 {
         self.require_not_paused();
         let old_service = self.try_get_service(service_id);
@@ -208,8 +221,46 @@ pub trait ServiceModule:
             },
             OptionalValue::None => ()
         }
+
+        match opt_grace_period{
+            OptionalValue::Some(period) => {
+                new_service.grace_period = period;
+            },
+            OptionalValue::None => ()
+        }
         self.service_by_id(service_id).set(new_service);
         service_id
+    }
+
+    #[only_owner]
+    #[endpoint(setCustomCut)]
+    #[allow(clippy::too_many_arguments)]
+    fn set_custom_cut_service(
+        &self,
+        service_id: u64,
+        cut_flag: bool,
+        opt_custom_cut: OptionalValue<u64>
+    ) -> bool {
+        let mut service = self.try_get_service(service_id).clone();
+        if cut_flag {
+            match opt_custom_cut{
+                OptionalValue::Some(cut) => {
+                    require!(
+                        cut <= PERCENTAGE_TOTAL,
+                        "Invalid percentage value, should be betwen 0 and 10,000."
+                    );
+                    service.custom_cut = true;
+                    service.contract_cut_percentage = BigUint::from(cut);
+                    self.service_by_id(service_id).set(service);
+                },
+                OptionalValue::None => ()
+            }
+        }
+        else{
+            service.custom_cut = false;
+            self.service_by_id(service_id).set(service);
+        }
+        cut_flag
     }
 
     #[view(getFullServiceData)]
@@ -223,6 +274,11 @@ pub trait ServiceModule:
     #[view(getServiceById)]
     #[storage_mapper("serviceById")]
     fn service_by_id(&self, service_id: u64) -> SingleValueMapper<Service<Self::Api>>;
+
+    // Service ID = Discount ID
+    #[view(getClaimableById)]
+    #[storage_mapper("claimableById")]
+    fn claimable_by_id(&self, service_id: u64) -> SingleValueMapper<BigUint>;
 
     #[view(getLastValidServiceId)]
     #[storage_mapper("lastValidServiceId")]
