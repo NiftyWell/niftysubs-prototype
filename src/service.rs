@@ -20,6 +20,18 @@ pub struct Service<M: ManagedTypeApi> {
         pub grace_period: u64
 }
 
+#[derive(TopEncode, TopDecode, TypeAbi, Clone)]
+pub struct Subscription<M: ManagedTypeApi> {
+    pub last_claim: u64,
+    pub amount: BigUint<M>
+}
+
+#[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
+pub struct SubId<M: ManagedTypeApi> {
+    pub address: ManagedAddress<M>,
+    pub service_id: u64
+}
+
 #[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, TypeAbi, PartialEq, Clone)]
 pub enum PeriodType {
     None,
@@ -263,6 +275,63 @@ pub trait ServiceModule:
         cut_flag
     }
 
+    #[endpoint(endService)]
+    #[allow(clippy::too_many_arguments)]
+    fn end_service(
+        &self,
+        service_id: u64
+    ) -> u64 {
+        self.require_not_paused();
+        let service = self.try_get_service(service_id);
+        let caller = self.blockchain().get_caller();
+        require!(
+            service.owner == caller,
+            "Only the service owner can end the service."
+        );
+        // CLAIM CLAIMABLE TOKENS
+        self.service_by_id(service_id).clear();
+        service_id
+    }
+
+    #[payable("*")]
+    #[endpoint(subscribe)]
+    #[allow(clippy::too_many_arguments)]
+    fn subscribe(
+        &self,
+        service_id: u64,
+        #[payment_token] payment_token  : EgldOrEsdtTokenIdentifier,
+        #[payment_nonce] payment_nonce  : u64,
+        #[payment_amount] payment_amount: BigUint,
+    ) -> u64 {
+        self.require_not_paused();
+        let service = self.try_get_service(service_id);
+        require!(
+            payment_token == service.payment_token,
+            "Incorrect payment token."
+        );
+        require!(
+            payment_nonce == service.payment_nonce,
+            "Incorrect payment token nonce."
+        );
+        require!(
+            payment_amount >= service.price,
+            "Insufficient amount."
+        );
+
+        let caller = self.blockchain().get_caller();
+
+        let sub_id = SubId{
+            address: caller.clone(),
+            service_id: service_id
+        };
+        let subscription = Subscription{
+            last_claim: self.blockchain().get_block_timestamp(),
+            amount: payment_amount,
+        };
+        self.subscription_by_id(&sub_id).set(subscription);
+        service_id
+    }
+
     #[view(getFullServiceData)]
     fn try_get_service(&self, service_id: u64) -> Service<Self::Api> {
         let service_mapper = self.service_by_id(service_id);
@@ -291,4 +360,8 @@ pub trait ServiceModule:
     #[view(getContractCutPercentage)]
     #[storage_mapper("contractCutPercentage")]
     fn contract_cut_percentage(&self) -> SingleValueMapper<BigUint>;
+
+    #[view(getSubscriptionById)]
+    #[storage_mapper("subscriptionById")]
+    fn subscription_by_id(&self, id: &SubId<Self::Api>) -> SingleValueMapper<Subscription<Self::Api>>;
 }
