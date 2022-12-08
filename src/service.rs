@@ -337,8 +337,34 @@ pub trait ServiceModule:
             amount: payment_amount,
         };
         self.subscription_by_id(&sub_id).set(subscription);
-
+        self.subscribers(service_id).insert(caller);
         service_id
+    }
+
+    #[endpoint(claimFunds)]
+    #[allow(clippy::too_many_arguments)]
+    fn claim_funds(
+        &self,
+        service_id: u64,
+    ) -> SCResult<()> {
+        let caller = self.blockchain().get_caller();
+        let service = self.try_get_service(service_id);
+        require!(
+            service.owner == caller,
+            "Only service owner can claim funds."
+        );
+        for address in self.subscribers(service_id).iter()
+        {
+            let subscription = self.try_get_subscription(address.clone(), service_id);
+            let current_timestamp = self.blockchain().get_block_timestamp();
+            let passed_periods = (current_timestamp - subscription.last_claim)/service.payment_period;
+            let to_pay = BigUint::from(passed_periods) * service.price.clone();
+            if to_pay > BigUint::zero(){
+                self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim+passed_periods*service.payment_period, amount: subscription.amount-to_pay.clone()});
+                self.send().direct(&caller, &service.payment_token, service.payment_nonce, &to_pay);
+            }
+        }
+        Ok(())
     }
 
     #[view(getFullServiceData)]
@@ -375,7 +401,7 @@ pub trait ServiceModule:
         }
         Status::Revoked
     }
-    
+
     // Service ID = Discount ID
     #[view(getServiceById)]
     #[storage_mapper("serviceById")]
