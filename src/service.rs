@@ -325,13 +325,17 @@ pub trait ServiceModule:
             payment_amount >= service.price,
             "Insufficient amount."
         );
-
+        
         let caller = self.blockchain().get_caller();
 
         let sub_id = SubId{
             address: caller.clone(),
             service_id: service_id
         };
+
+        let subscription_mapper = self.subscription_by_id(&sub_id);
+        require!(subscription_mapper.is_empty(), "Subscription already exists");
+
         let subscription = Subscription{
             last_claim: self.blockchain().get_block_timestamp(),
             amount: payment_amount,
