@@ -39,6 +39,14 @@ pub enum PeriodType {
     Epochs
 }
 
+#[derive(TopEncode, TopDecode, NestedEncode, NestedDecode, TypeAbi, PartialEq, Clone)]
+pub enum Status {
+    None,
+    Active,
+    Pending,
+    Revoked
+}
+
 #[elrond_wasm::module]
 pub trait ServiceModule:
     //crate::token_distribution::TokenDistributionModule
@@ -329,6 +337,7 @@ pub trait ServiceModule:
             amount: payment_amount,
         };
         self.subscription_by_id(&sub_id).set(subscription);
+
         service_id
     }
 
@@ -339,6 +348,34 @@ pub trait ServiceModule:
         service_mapper.get()
     }
 
+    #[view(getFullSubscriptionData)]
+    fn try_get_subscription(&self, address: ManagedAddress, service_id: u64) -> Subscription<Self::Api> {
+        let sub_id = SubId{
+            address: address.clone(),
+            service_id: service_id
+        };
+        let subscription_mapper = self.subscription_by_id(&sub_id);
+        require!(!subscription_mapper.is_empty(), "Subscription does not exist");
+        subscription_mapper.get()
+    }
+
+    // Check Subscription status
+    #[view(getStatus)]
+    fn try_get_status(&self, address: ManagedAddress, service_id: u64) -> Status {
+        let service = self.try_get_service(service_id);
+        let subscription = self.try_get_subscription(address, service_id);
+        let current_timestamp = self.blockchain().get_block_timestamp();
+        let passed_period = (current_timestamp - subscription.last_claim)/service.payment_period;
+        if passed_period < 1 {
+            return Status::Active;
+        }
+        let to_pay = BigUint::from(passed_period) * service.price;
+        if subscription.amount >= to_pay{
+            return Status::Active;
+        }
+        Status::Revoked
+    }
+    
     // Service ID = Discount ID
     #[view(getServiceById)]
     #[storage_mapper("serviceById")]
@@ -364,4 +401,8 @@ pub trait ServiceModule:
     #[view(getSubscriptionById)]
     #[storage_mapper("subscriptionById")]
     fn subscription_by_id(&self, id: &SubId<Self::Api>) -> SingleValueMapper<Subscription<Self::Api>>;
+
+    #[view(getSubscribers)]
+    #[storage_mapper("subscribers")]
+    fn subscribers(&self, service_id: u64) -> UnorderedSetMapper<ManagedAddress>;
 }

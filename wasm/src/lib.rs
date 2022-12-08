@@ -14,9 +14,12 @@ elrond_wasm_node::wasm_endpoints! {
         getContractCutPercentage
         getFullDiscountData
         getFullServiceData
+        getFullSubscriptionData
         getLastValidServiceId
         getServiceById
         getServicesByAddress
+        getStatus
+        getSubscribers
         getSubscriptionById
         isPaused
         pause
