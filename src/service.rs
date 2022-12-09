@@ -371,6 +371,76 @@ pub trait ServiceModule:
         Ok(())
     }
 
+    #[payable("*")]
+    #[endpoint(fundSubscription)]
+    #[allow(clippy::too_many_arguments)]
+    fn fund_subscription(
+        &self,
+        service_id: u64,
+        #[payment_token] payment_token  : EgldOrEsdtTokenIdentifier,
+        #[payment_nonce] payment_nonce  : u64,
+        #[payment_amount] payment_amount: BigUint,
+    ) -> u64 {
+        self.require_not_paused();
+        let service = self.try_get_service(service_id);
+        require!(
+            payment_token == service.payment_token,
+            "Incorrect payment token."
+        );
+        require!(
+            payment_nonce == service.payment_nonce,
+            "Incorrect payment token nonce."
+        );
+        
+        let caller = self.blockchain().get_caller();
+
+        let sub_id = SubId{
+            address: caller.clone(),
+            service_id: service_id
+        };
+
+        let subscription_mapper = self.subscription_by_id(&sub_id);
+        require!(!subscription_mapper.is_empty(), "Subscription doesn't exists");
+        let subscription = subscription_mapper.get();
+
+        let subscription = Subscription{
+            last_claim: self.blockchain().get_block_timestamp(),
+            amount: subscription.amount + payment_amount,
+        };
+        self.subscription_by_id(&sub_id).set(subscription);
+        service_id
+    }
+
+    #[endpoint(retrieveFunds)]
+    #[allow(clippy::too_many_arguments)]
+    fn retrieve_funds(
+        &self,
+        service_id: u64,
+        amount: BigUint
+    ) -> SCResult<()> {
+        let caller = self.blockchain().get_caller();
+        let service = self.try_get_service(service_id);
+        require!(
+            service.owner == caller,
+            "Only service owner can claim funds."
+        );
+        let subscription = self.try_get_subscription(caller.clone(), service_id);
+        let current_timestamp = self.blockchain().get_block_timestamp();
+        let passed_periods = (current_timestamp - subscription.last_claim)/service.payment_period;
+        let to_pay = BigUint::from(passed_periods) * service.price.clone();
+        let left = subscription.amount.clone() - amount.clone();
+
+        require!(
+            left >= to_pay,
+            "You can't retrieve this amount."
+        );
+    
+        self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: subscription.amount-amount.clone()});
+        self.send().direct(&caller, &service.payment_token, service.payment_nonce, &amount);
+    
+        Ok(())
+    }
+
     #[view(getFullServiceData)]
     fn try_get_service(&self, service_id: u64) -> Service<Self::Api> {
         let service_mapper = self.service_by_id(service_id);

@@ -11,6 +11,7 @@ elrond_wasm_node::wasm_endpoints! {
         createDiscount
         createService
         endService
+        fundSubscription
         getClaimableById
         getContractCutPercentage
         getFullDiscountData
@@ -24,6 +25,7 @@ elrond_wasm_node::wasm_endpoints! {
         getSubscriptionById
         isPaused
         pause
+        retrieveFunds
         setCustomCut
         setCutPercentage
         subscribe
