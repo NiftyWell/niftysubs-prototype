@@ -23,7 +23,8 @@ pub struct Service<M: ManagedTypeApi> {
 #[derive(TopEncode, TopDecode, TypeAbi, Clone)]
 pub struct Subscription<M: ManagedTypeApi> {
     pub last_claim: u64,
-    pub amount: BigUint<M>
+    pub amount: BigUint<M>,
+    pub unsubscribed: bool
 }
 
 #[derive(NestedEncode, NestedDecode, TopEncode, TopDecode, TypeAbi, Clone)]
@@ -339,10 +340,41 @@ pub trait ServiceModule:
         let subscription = Subscription{
             last_claim: self.blockchain().get_block_timestamp(),
             amount: payment_amount,
+            unsubscribed: false,
         };
         self.subscription_by_id(&sub_id).set(subscription);
-        self.subscribers(service_id).insert(caller);
+        self.subscribers(service_id).insert(caller.clone());
+        self.subscriptions_by_address(&caller).insert(service_id);
         service_id
+    }
+
+    #[endpoint(unsubscribe)]
+    #[allow(clippy::too_many_arguments)]
+    fn unsubscribe(
+        &self,
+        service_id: u64,
+    ) -> SCResult<()> {
+        let caller = self.blockchain().get_caller();
+        let service = self.try_get_service(service_id);
+        let subscription = self.try_get_subscription(caller.clone(), service_id);
+        let current_timestamp = self.blockchain().get_block_timestamp();
+        let passed_periods = (current_timestamp - subscription.last_claim)/service.payment_period;
+        let to_pay = BigUint::from(passed_periods) * service.price.clone();
+        let left = subscription.amount - to_pay.clone();
+
+        // if there's something left after obligatory payments, send funds back to user
+        if left > 0 {
+            // the subscription will get deleted only after the claim. Address should also remain in subscribers mapper for this reason.
+            self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: to_pay.clone(), unsubscribed: true});
+            self.send().direct(&caller, &service.payment_token, service.payment_nonce, &left);
+            self.subscriptions_by_address(&caller).swap_remove(&service_id); // remove service from subscription list of user (used just as a view for dapps)
+        }
+        if to_pay <= 0 { // if it so happens that nothing was left to pay, fully unsubscribe user from service
+            self.subscriptions_by_address(&caller).swap_remove(&service_id); // remove service from subscription list of user (used just as a view for dapps)
+            self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).clear();
+            self.subscribers(service_id).swap_remove(&caller);
+        }
+        Ok(())
     }
 
     #[endpoint(claimFunds)]
@@ -364,7 +396,17 @@ pub trait ServiceModule:
             let passed_periods = (current_timestamp - subscription.last_claim)/service.payment_period;
             let to_pay = BigUint::from(passed_periods) * service.price.clone();
             if to_pay > BigUint::zero(){
-                self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim+passed_periods*service.payment_period, amount: subscription.amount-to_pay.clone()});
+                if subscription.unsubscribed { // If user opted to unsubscribe, remove user subscription & address from subscribers list
+                    self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).clear();
+                    self.subscribers(service_id).swap_remove(&address);
+                }
+                else{
+                    self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim+passed_periods*service.payment_period, amount: subscription.amount-to_pay.clone(), unsubscribed: false});
+                }
+                // Update total payments
+                let mut new_service = service.clone();
+                new_service.payments_total = new_service.payments_total + to_pay.clone();
+                self.service_by_id(service_id).set(new_service);
                 self.send().direct(&caller, &service.payment_token, service.payment_nonce, &to_pay);
             }
         }
@@ -406,6 +448,7 @@ pub trait ServiceModule:
         let subscription = Subscription{
             last_claim: self.blockchain().get_block_timestamp(),
             amount: subscription.amount + payment_amount,
+            unsubscribed: false
         };
         self.subscription_by_id(&sub_id).set(subscription);
         service_id
@@ -420,10 +463,6 @@ pub trait ServiceModule:
     ) -> SCResult<()> {
         let caller = self.blockchain().get_caller();
         let service = self.try_get_service(service_id);
-        require!(
-            service.owner == caller,
-            "Only service owner can claim funds."
-        );
         let subscription = self.try_get_subscription(caller.clone(), service_id);
         let current_timestamp = self.blockchain().get_block_timestamp();
         let passed_periods = (current_timestamp - subscription.last_claim)/service.payment_period;
@@ -435,7 +474,7 @@ pub trait ServiceModule:
             "You can't retrieve this amount."
         );
     
-        self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: subscription.amount-amount.clone()});
+        self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: subscription.amount-amount.clone(), unsubscribed: false});
         self.send().direct(&caller, &service.payment_token, service.payment_nonce, &amount);
     
         Ok(())
@@ -505,4 +544,9 @@ pub trait ServiceModule:
     #[view(getSubscribers)]
     #[storage_mapper("subscribers")]
     fn subscribers(&self, service_id: u64) -> UnorderedSetMapper<ManagedAddress>;
+
+    #[view(getSubscriptionsByAddress)]
+    #[storage_mapper("subscriptionsByAddress")]
+    fn subscriptions_by_address(&self, address: &ManagedAddress) -> UnorderedSetMapper<u64>;
+
 }

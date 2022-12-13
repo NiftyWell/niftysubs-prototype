@@ -23,6 +23,7 @@ elrond_wasm_node::wasm_endpoints! {
         getStatus
         getSubscribers
         getSubscriptionById
+        getSubscriptionsByAddress
         isPaused
         pause
         retrieveFunds
@@ -30,6 +31,7 @@ elrond_wasm_node::wasm_endpoints! {
         setCutPercentage
         subscribe
         unpause
+        unsubscribe
         updateService
     )
 }

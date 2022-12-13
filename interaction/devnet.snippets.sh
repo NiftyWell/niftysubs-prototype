@@ -2,7 +2,7 @@ PEM="../wallets/walletKey.pem"
 BLACKLIST="nifty-mint/interaction/blacklist.txt"
 #PEM="../../../wallet/nifty-wallet.pem"
 #CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqj55u3dxk84wyjw97h479dmvh7wx3hzmkzjvsggc0p2
-CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqa7hy6prezrm9dlfavjsnz94at47ag23ufsws3m8f8q
+CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgq0wdpvuqpvxzma3xujn9263ssth7jty83fswswvryfw
 ADDRESS=$(erdpy data load --key=address)
 DEPLOY_TRANSACTION=$(erdpy data load --key=deployTransaction)
 
@@ -25,7 +25,7 @@ SFT_COLL="0x5049454345532d396161623566"
 ###################
 # DEPLOY CONTRACT
 deploy(){
-    erdpy --verbose contract deploy --project=niftysubs --pem=${PEM} --gas-limit=50000000 --proxy=${PROXY} --chain=${CHAIN_ID} --outfile="niftysubs.json" --recall-nonce --send
+    erdpy --verbose contract deploy --project=niftysubs --pem=${PEM} --gas-limit=600000000 --proxy=${PROXY} --chain=${CHAIN_ID} --outfile="niftysubs.json" --recall-nonce --send
 }
 
 ###################
@@ -324,7 +324,7 @@ setMaxTotMintQuantity(){
 
 
 registerMintToken(){
-    erdpy --verbose contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    erdpy --verbose contract call ${CONTRACxT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=10000000 --function="registerMintToken" \
     --arguments ${TOKEN_TICKER} \
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
@@ -466,6 +466,20 @@ clearStackSteps(){
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
 }
 
+Subscribe(){
+    #Subscribe to usdc
+    local ticker=0x555344432d373964396134 #USDC-79d9a4
+    local service_id=2
+    local quantity=10000000000000000000
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=15000000 --function="ESDTTransfer" \
+    --arguments \
+        ${ticker}\
+        ${quantity} \
+        0x737562736372696265 \
+        ${service_id}\
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
 #######
 # MINT
 
