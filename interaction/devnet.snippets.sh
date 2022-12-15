@@ -73,7 +73,6 @@ getServiceById(){
     ./niftysubs/interaction/scripts/parser.py "--parseService" $res $id
 }
 
-
 getLastValidServiceId(){
     erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getLastValidServiceId"
 }
@@ -85,6 +84,32 @@ getServicesByAddress(){
 
 getContractCutPercentage(){
     erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getContractCutPercentage"
+}
+
+getStatus(){    
+    local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
+    local service_id=5
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getStatus" \
+    --arguments \
+    $address \
+    $service_id
+    
+}
+
+getSubscriptionsByAddress(){
+    local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getSubscriptionsByAddress" \
+    --arguments \
+    $address 
+}
+
+getSubscriptionById(){
+    local service_id=3
+    local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getFullSubscriptionData" \
+    --arguments \
+    $address \
+    $service_id
 }
 
 getSftStackOwner(){
@@ -218,6 +243,43 @@ createServiceUSDC(){
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
 }
 
+createServiceUSDC600(){
+    local TOKEN_TICKER=0x555344432d373964396134
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=10000000 --function="createService" \
+    --arguments \
+        ${TOKEN_TICKER} \
+        0x00 \
+        10000000000000000000 \
+        1 \
+        600 \
+        0x555344432053657276696365 \
+        0x75736463736572766963652e636f6d \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+
+claimFunds(){
+    local service_id=5
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=10000000 --function="claimFunds" \
+    --arguments \
+        $service_id \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+
+fundSubscription(){
+    local ticker=0x555344432d373964396134 #USDC-79d9a4
+    local service_id=5
+    local quantity=800000000000000000 #2
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=15000000 --function="ESDTTransfer" \
+    --arguments \
+        ${ticker}\
+        ${quantity} \
+        0x66756e64537562736372697074696f6e \
+        ${service_id}\
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
 createServiceSFT(){
     local TOKEN_TICKER=0x5049454345532d396161623566
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
@@ -469,7 +531,7 @@ clearStackSteps(){
 Subscribe(){
     #Subscribe to usdc
     local ticker=0x555344432d373964396134 #USDC-79d9a4
-    local service_id=2
+    local service_id=5
     local quantity=10000000000000000000
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=15000000 --function="ESDTTransfer" \
@@ -480,6 +542,17 @@ Subscribe(){
         ${service_id}\
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
 }
+
+Unsubscribe(){
+    #Subscribe to usdc
+    local service_id=2
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=15000000 --function="unsubscribe" \
+    --arguments \
+        ${service_id}\
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+
 #######
 # MINT
 
