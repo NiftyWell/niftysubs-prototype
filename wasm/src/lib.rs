@@ -24,6 +24,7 @@ elrond_wasm_node::wasm_endpoints! {
         getSubscribers
         getSubscriptionById
         getSubscriptionsByAddress
+        getToPay
         isPaused
         pause
         retrieveFunds

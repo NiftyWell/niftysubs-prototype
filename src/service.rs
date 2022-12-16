@@ -24,6 +24,7 @@ pub struct Service<M: ManagedTypeApi> {
 pub struct Subscription<M: ManagedTypeApi> {
     pub last_claim: u64,
     pub amount: BigUint<M>,
+    pub prev_amount: BigUint<M>,
     pub unsubscribed: bool
 }
 
@@ -341,12 +342,13 @@ pub trait ServiceModule:
         if service.period_type == PeriodType::Epochs{
             last_claim = last_claim - (86400*service.payment_period);
         }
-        else if service.period_type == PeriodType::Epochs{
+        else if service.period_type == PeriodType::Seconds{
             last_claim = last_claim - service.payment_period;
         }
         let subscription = Subscription{
             last_claim: last_claim,
             amount: payment_amount,
+            prev_amount: BigUint::zero(),
             unsubscribed: false,
         };
         self.subscription_by_id(&sub_id).set(subscription);
@@ -376,7 +378,7 @@ pub trait ServiceModule:
         // if there's something left after obligatory payments, send funds back to user
         if left > 0 {
             // the subscription will get deleted only after the claim. Address should also remain in subscribers mapper for this reason.
-            self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: to_pay.clone(), unsubscribed: true});
+            self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: to_pay.clone(), prev_amount: subscription.prev_amount, unsubscribed: true});
             self.send().direct(&caller, &service.payment_token, service.payment_nonce, &left);
             self.subscriptions_by_address(&caller).swap_remove(&service_id); // remove service from subscription list of user (used just as a view for dapps)
         }
@@ -410,7 +412,7 @@ pub trait ServiceModule:
             let current_timestamp = self.blockchain().get_block_timestamp();
             let passed_periods = (current_timestamp - subscription.last_claim)/(service.payment_period*period_mult);
             let to_pay = BigUint::from(passed_periods) * service.price.clone();
-            let payment;
+            let mut payment;
             if subscription.amount >= service.price{
                 if to_pay > BigUint::zero(){
                     let can_pay = subscription.amount.clone() - (subscription.amount.clone()%service.price.clone());
@@ -420,12 +422,28 @@ pub trait ServiceModule:
                     else{
                         payment = to_pay;
                     }    
+                    let mut new_sub = Subscription{
+                        last_claim: subscription.last_claim.clone(), 
+                        amount: subscription.amount.clone(),
+                        prev_amount: subscription.prev_amount.clone(),
+                        unsubscribed: subscription.unsubscribed.clone()
+                    };
                     if subscription.unsubscribed && subscription.amount.clone() - can_pay == BigUint::zero(){ // If user opted to unsubscribe, remove user subscription & address from subscribers list
                         self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).clear();
                         self.subscribers(service_id).swap_remove(&address);
                     }
                     else{
-                        self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim+passed_periods*service.payment_period, amount: subscription.amount-payment.clone(), unsubscribed: false});
+                        new_sub.last_claim = subscription.last_claim+passed_periods*service.payment_period;
+                        new_sub.amount = subscription.amount-payment.clone();
+                        new_sub.prev_amount = subscription.prev_amount.clone();
+                        new_sub.unsubscribed = subscription.unsubscribed;
+
+                        self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(new_sub.clone());
+                    }
+                    if subscription.prev_amount > BigUint::zero(){
+                        payment+=subscription.prev_amount;
+                        new_sub.prev_amount = BigUint::zero();
+                        self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(new_sub.clone());
                     }
                     // Update total payments
                     let mut new_service = service.clone();
@@ -438,6 +456,30 @@ pub trait ServiceModule:
         Ok(())
     }
 
+    fn get_to_pay(&self, amount: BigUint, last_claim: u64, service: Service<Self::Api>) -> BigUint {
+        let mut period_mult = 1u64;
+        if service.period_type == PeriodType::Epochs{
+            period_mult = 86400u64;
+        }
+
+        let current_timestamp = self.blockchain().get_block_timestamp();
+        let passed_periods = (current_timestamp - last_claim)/(service.payment_period*period_mult);
+        let to_pay = BigUint::from(passed_periods) * service.price.clone();
+        let payment;
+        if amount >= service.price{
+            if to_pay > BigUint::zero(){
+                let can_pay = amount.clone() - (amount.clone()%service.price.clone());
+                if can_pay <= to_pay{
+                    payment = can_pay.clone();
+                }
+                else{
+                    payment = to_pay;
+                }   
+                return payment;
+            }
+        }
+        return BigUint::zero();
+    }
     #[payable("*")]
     #[endpoint(fundSubscription)]
     #[allow(clippy::too_many_arguments)]
@@ -468,22 +510,26 @@ pub trait ServiceModule:
 
         let subscription_mapper = self.subscription_by_id(&sub_id);
         require!(!subscription_mapper.is_empty(), "Subscription doesn't exists");
-        let subscription = subscription_mapper.get();
+        let subscription_mapper = subscription_mapper.get();
 
-        let subscription = Subscription{
-            last_claim: subscription.last_claim,
-            amount: subscription.amount + payment_amount,
-            unsubscribed: false
+        let mut subscription = Subscription{
+            last_claim: subscription_mapper.last_claim,
+            prev_amount: BigUint::zero(), //shouldn't be zero, should check if revoked. if revoked move amount to be payed there.
+            amount: subscription_mapper.amount + payment_amount,
+            unsubscribed: subscription_mapper.unsubscribed
         };
 
-        if self.try_get_status(&caller, service_id) == Status::Revoked{
-            let mut last_claim = self.blockchain().get_block_timestamp();
+        if self.try_get_status(caller, service_id) == Status::Revoked{
+            /*let mut last_claim = self.blockchain().get_block_timestamp();
             if service.period_type == PeriodType::Epochs{
                 last_claim = last_claim - (86400*service.payment_period);
             }
             else if service.period_type == PeriodType::Epochs{
                 last_claim = last_claim - service.payment_period;
-            }
+            }*/
+            let to_pay = self.get_to_pay(subscription.amount.clone(), subscription.last_claim.clone(), service.clone());
+            subscription.prev_amount = to_pay.clone();
+            subscription.amount = subscription.amount-to_pay;
         }
         self.subscription_by_id(&sub_id).set(subscription);
         service_id
@@ -515,7 +561,7 @@ pub trait ServiceModule:
             "You can't retrieve this amount."
         );
     
-        self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: subscription.amount-amount.clone(), unsubscribed: false});
+        self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).set(Subscription{last_claim: subscription.last_claim, amount: subscription.amount-amount.clone(), prev_amount: subscription.prev_amount, unsubscribed: false});
         self.send().direct(&caller, &service.payment_token, service.payment_nonce, &amount);
     
         Ok(())
@@ -558,6 +604,20 @@ pub trait ServiceModule:
             return Status::Active;
         }
         Status::Revoked
+    }
+
+    #[view(getToPay)]
+    fn try_get_to_pay(&self, address: ManagedAddress, service_id: u64) -> BigUint {
+        let service = self.try_get_service(service_id);
+        let mut period_mult = 1u64;
+        if service.period_type == PeriodType::Epochs{
+            period_mult = 86400u64;
+        }
+        let subscription = self.try_get_subscription(address, service_id);
+        let current_timestamp = self.blockchain().get_block_timestamp();
+        let passed_period = (current_timestamp - subscription.last_claim)/(service.payment_period*period_mult);
+        let to_pay = BigUint::from(passed_period) * service.price;
+        to_pay
     }
 
     // Service ID = Discount ID

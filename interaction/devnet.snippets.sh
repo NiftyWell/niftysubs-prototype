@@ -2,7 +2,7 @@ PEM="../wallets/walletKey.pem"
 BLACKLIST="nifty-mint/interaction/blacklist.txt"
 #PEM="../../../wallet/nifty-wallet.pem"
 #CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqj55u3dxk84wyjw97h479dmvh7wx3hzmkzjvsggc0p2
-CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgq0wdpvuqpvxzma3xujn9263ssth7jty83fswswvryfw
+CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqgnqw7c6zxf6ltgqhukx4say5hq22uayffsws9a9z9y
 ADDRESS=$(erdpy data load --key=address)
 DEPLOY_TRANSACTION=$(erdpy data load --key=deployTransaction)
 
@@ -88,12 +88,19 @@ getContractCutPercentage(){
 
 getStatus(){    
     local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
-    local service_id=5
+    local service_id=4
     erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getStatus" \
     --arguments \
     $address \
     $service_id
-    
+}
+getToPay(){    
+    local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
+    local service_id=6
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getToPay" \
+    --arguments \
+    $address \
+    $service_id
 }
 
 getSubscriptionsByAddress(){
@@ -258,8 +265,51 @@ createServiceUSDC600(){
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
 }
 
+createServiceUSDC300(){
+    local TOKEN_TICKER=0x555344432d373964396134
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=10000000 --function="createService" \
+    --arguments \
+        ${TOKEN_TICKER} \
+        0x00 \
+        5000000000000000000 \
+        1 \
+        300 \
+        0x555344432035204d494e \
+        0x55534443356d696e2e636f6d \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+createServiceUSDC3min(){
+    local TOKEN_TICKER=0x555344432d373964396134
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=10000000 --function="createService" \
+    --arguments \
+        ${TOKEN_TICKER} \
+        0x00 \
+        5000000000000000000 \
+        1 \
+        180 \
+        0x336d696e55534443 \
+        0x336d696e555344432e636f6d \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+createServiceUSDC1min(){
+    local TOKEN_TICKER=0x555344432d373964396134
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=10000000 --function="createService" \
+    --arguments \
+        ${TOKEN_TICKER} \
+        0x00 \
+        2000000000000000000 \
+        1 \
+        60 \
+        0x316d696e55534443 \
+        0x316d696e555344432e636f6d \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+
 claimFunds(){
-    local service_id=5
+    local service_id=2
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=10000000 --function="claimFunds" \
     --arguments \
@@ -531,8 +581,8 @@ clearStackSteps(){
 Subscribe(){
     #Subscribe to usdc
     local ticker=0x555344432d373964396134 #USDC-79d9a4
-    local service_id=5
-    local quantity=10000000000000000000
+    local service_id=6
+    local quantity=2000000000000000000
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=15000000 --function="ESDTTransfer" \
     --arguments \
