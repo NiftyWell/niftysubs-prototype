@@ -2,7 +2,7 @@ PEM="../wallets/walletKey.pem"
 BLACKLIST="nifty-mint/interaction/blacklist.txt"
 #PEM="../../../wallet/nifty-wallet.pem"
 #CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqj55u3dxk84wyjw97h479dmvh7wx3hzmkzjvsggc0p2
-CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgqgnqw7c6zxf6ltgqhukx4say5hq22uayffsws9a9z9y
+CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqpgq5v3d6r87gk0yr054ltqtfj4lufkydd9vfswsa79yq7
 ADDRESS=$(erdpy data load --key=address)
 DEPLOY_TRANSACTION=$(erdpy data load --key=deployTransaction)
 
@@ -88,8 +88,16 @@ getContractCutPercentage(){
 
 getStatus(){    
     local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
-    local service_id=4
+    local service_id=6
     erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getStatus" \
+    --arguments \
+    $address \
+    $service_id
+}
+getPassedPeriods(){
+    local address=erd12ysqw48fcqw4qudlts75vdamkuctxwemad0gwx8dap72slj9fswsadgmd5
+    local service_id=6
+    erdpy --verbose contract query ${CONTRACT_ADDRESS} --proxy=${PROXY} --function="getPassedPeriods" \
     --arguments \
     $address \
     $service_id
@@ -309,7 +317,7 @@ createServiceUSDC1min(){
 }
 
 claimFunds(){
-    local service_id=2
+    local service_id=6
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=10000000 --function="claimFunds" \
     --arguments \
@@ -319,8 +327,8 @@ claimFunds(){
 
 fundSubscription(){
     local ticker=0x555344432d373964396134 #USDC-79d9a4
-    local service_id=5
-    local quantity=800000000000000000 #2
+    local service_id=6
+    local quantity=1000000000000000000 #2
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=15000000 --function="ESDTTransfer" \
     --arguments \
@@ -582,7 +590,7 @@ Subscribe(){
     #Subscribe to usdc
     local ticker=0x555344432d373964396134 #USDC-79d9a4
     local service_id=6
-    local quantity=2000000000000000000
+    local quantity=2000000000000000000 #2 usdc
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=15000000 --function="ESDTTransfer" \
     --arguments \

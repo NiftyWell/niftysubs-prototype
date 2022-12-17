@@ -18,6 +18,7 @@ elrond_wasm_node::wasm_endpoints! {
         getFullServiceData
         getFullSubscriptionData
         getLastValidServiceId
+        getPassedPeriods
         getServiceById
         getServicesByAddress
         getStatus
