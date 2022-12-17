@@ -433,7 +433,10 @@ pub trait ServiceModule:
                         self.subscribers(service_id).swap_remove(&address);
                     }
                     else{
-                        new_sub.last_claim = subscription.last_claim+passed_periods*service.payment_period;
+                        if self.try_get_status(address.clone(), service_id) == Status::Revoked{ // Just to set to a period when it's already revoked, so period = 1. The real period is basically irelevant since when the user will refund the last claim is reset like a new subscription.
+                            new_sub.last_claim = subscription.last_claim+passed_periods*service.payment_period*period_mult-service.payment_period;
+                        }
+                        new_sub.last_claim = subscription.last_claim+passed_periods*service.payment_period*period_mult;
                         new_sub.amount = subscription.amount-payment.clone();
                         new_sub.prev_amount = subscription.prev_amount.clone();
                         new_sub.unsubscribed = subscription.unsubscribed;
@@ -519,17 +522,21 @@ pub trait ServiceModule:
             unsubscribed: subscription_mapper.unsubscribed
         };
 
-        if self.try_get_status(caller, service_id) == Status::Revoked{
-            /*let mut last_claim = self.blockchain().get_block_timestamp();
+        if self.try_get_status(caller, service_id) == Status::Revoked{ 
+            // Add prev_amount for owner to be able to claim last what was payed before getting revoked.
+            // last claim is set just like a new subscription. 
+
+            let mut last_claim = self.blockchain().get_block_timestamp();
             if service.period_type == PeriodType::Epochs{
                 last_claim = last_claim - (86400*service.payment_period);
             }
-            else if service.period_type == PeriodType::Epochs{
+            else if service.period_type == PeriodType::Seconds{
                 last_claim = last_claim - service.payment_period;
-            }*/
+            }
             let to_pay = self.get_to_pay(subscription.amount.clone(), subscription.last_claim.clone(), service.clone());
             subscription.prev_amount = to_pay.clone();
             subscription.amount = subscription.amount-to_pay;
+            subscription.last_claim = last_claim;
         }
         self.subscription_by_id(&sub_id).set(subscription);
         service_id
