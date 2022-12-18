@@ -328,7 +328,7 @@ claimFunds(){
 fundSubscription(){
     local ticker=0x555344432d373964396134 #USDC-79d9a4
     local service_id=6
-    local quantity=1000000000000000000 #2
+    local quantity=2000000000000000000 #2
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
     --gas-limit=15000000 --function="ESDTTransfer" \
     --arguments \
@@ -338,6 +338,18 @@ fundSubscription(){
         ${service_id}\
     --send --proxy=${PROXY} --chain=${CHAIN_ID}
 }
+
+retrieveFunds(){
+    local service_id=6
+    local quantity=0000000000000000000 #2
+    erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \
+    --gas-limit=15000000 --function="retrieveFunds" \
+    --arguments \
+        ${service_id}\
+        ${quantity} \
+    --send --proxy=${PROXY} --chain=${CHAIN_ID}
+}
+
 createServiceSFT(){
     local TOKEN_TICKER=0x5049454345532d396161623566
     erdpy contract call ${CONTRACT_ADDRESS} --recall-nonce --pem=${PEM} \

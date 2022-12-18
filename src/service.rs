@@ -572,7 +572,7 @@ pub trait ServiceModule:
 
         let to_pay = self.get_to_pay(service.clone(), subscription.clone());
         require!(
-            amount <= subscription.amount,
+            amount <= subscription.amount && amount > BigUint::zero(),
             "You can't retrieve more funds than you have."
         );
         let left = subscription.amount.clone() - amount.clone();
