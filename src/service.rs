@@ -287,6 +287,7 @@ pub trait ServiceModule:
         cut_flag
     }
 
+    // Service owner should claim funds by himslef before ending a service.
     #[endpoint(endService)]
     #[allow(clippy::too_many_arguments)]
     fn end_service(
@@ -300,8 +301,9 @@ pub trait ServiceModule:
             service.owner == caller,
             "Only the service owner can end the service."
         );
-        // CLAIM CLAIMABLE TOKENS
+        self.services_by_address(&caller).swap_remove(&service_id);      
         self.service_by_id(service_id).clear();
+        self.subscribers(service_id).clear();
         service_id
     }
 
@@ -365,7 +367,7 @@ pub trait ServiceModule:
         let service_mapper = self.service_by_id(service_id);
         let subscription = self.try_get_subscription(caller.clone(), service_id);
         if service_mapper.is_empty() {
-            // Unsubscribe and send all funds
+            // Unsubscribe and send all funds to client.
             self.send().direct(&caller, &subscription.payment_token, subscription.payment_nonce, &subscription.amount);
             self.subscriptions_by_address(&caller).swap_remove(&service_id); // remove service from subscription list of user (used just as a view for dapps)
             self.subscription_by_id(&SubId{address:caller.clone(), service_id:service_id}).clear();
