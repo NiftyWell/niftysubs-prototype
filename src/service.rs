@@ -439,6 +439,10 @@ pub trait ServiceModule:
         return passed_periods
     }
 
+    fn calculate_cut_amount(&self, total_amount: &BigUint, cut_percentage: &BigUint) -> BigUint {
+        total_amount * cut_percentage / PERCENTAGE_TOTAL
+    }
+
     #[endpoint(claimFunds)]
     #[allow(clippy::too_many_arguments)]
     fn claim_funds(
@@ -503,9 +507,118 @@ pub trait ServiceModule:
             total_payments > BigUint::zero(),
             "No payments to be claimed."
         );
-        self.send().direct(&caller, &service.payment_token, service.payment_nonce, &total_payments);
+        let mut contract_cut_percentage = self.contract_cut_percentage().get();
+        if service.custom_cut{
+            contract_cut_percentage = service.contract_cut_percentage;
+        }
+
+        let contract_cut = self.calculate_cut_amount(&total_payments.clone(), &contract_cut_percentage);
+        let service_payments = total_payments.clone() - contract_cut.clone();
+        if !self.reward_tokens().contains(&service.payment_token) {
+            self.reward_tokens().insert(service.payment_token.clone());
+        }
+        self.contract_rewards(service.payment_token.clone()).update(|val| *val += contract_cut); // Update contract reward for this token.
+        self.send().direct(&caller, &service.payment_token, service.payment_nonce, &service_payments);
         Ok(())
     }
+
+    #[payable("*")]
+    #[endpoint(discountClaimFunds)]
+    #[allow(clippy::too_many_arguments)]
+    fn discount_claim_funds(
+        &self,
+        service_id: u64,
+        #[payment_token] disc_token  : EgldOrEsdtTokenIdentifier,
+        #[payment_amount] disc_amount: BigUint,
+    ) -> SCResult<()> {
+        let caller = self.blockchain().get_caller();
+        let service = self.try_get_service(service_id);
+        require!(
+            service.owner == caller,
+            "Only service owner can claim funds."
+        );
+        let rate = self.claim_discount_rate().get();
+        // Payment amount needs to be a multiple of rate
+        require!(
+            disc_token == self.claim_discount_token().get(),
+            "Invalid discount token."
+        );
+        // Payment amount needs to be a multiple of rate
+        require!(
+            disc_amount.clone()%rate.clone() == 0 && disc_amount.clone() > 0,
+            "Invalid discount token amount."
+        );
+
+        let mut period_mult = 1u64;
+        if service.period_type == PeriodType::Epochs{
+            period_mult = 86400u64;
+        }
+        let mut total_payments = BigUint::zero();
+        for address in self.subscribers(service_id).iter()
+        {
+            let subscription = self.try_get_subscription(address.clone(), service_id);
+            if subscription.unsubscribed {
+                total_payments+=subscription.amount;
+                self.subscribers(service_id).swap_remove(&caller);
+                self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).clear();
+            }
+            else{
+                let mut to_pay = self.get_to_pay(service.clone(), subscription.clone());
+                let payed_periods = (to_pay.clone()/service.price.clone()).to_u64().unwrap_or_default();
+                if subscription.amount >= service.price{
+                    if to_pay > BigUint::zero(){
+                        let mut new_sub = Subscription{
+                            last_claim: subscription.last_claim.clone(), 
+                            payment_token: service.payment_token.clone(),
+                            payment_nonce: service.payment_nonce,
+                            amount: subscription.amount.clone(),
+                            prev_amount: subscription.prev_amount.clone(),
+                            unsubscribed: subscription.unsubscribed.clone()
+                        };
+                        if subscription.unsubscribed && subscription.amount.clone() - to_pay.clone() == BigUint::zero(){ // If user opted to unsubscribe, remove user subscription & address from subscribers list
+                            self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).clear();
+                            self.subscribers(service_id).swap_remove(&address);
+                        }
+                        else{
+                            new_sub.last_claim = subscription.last_claim+payed_periods*service.payment_period*period_mult; // Periods payed for.
+                            new_sub.amount = subscription.amount-to_pay.clone();
+                            new_sub.prev_amount = subscription.prev_amount.clone();
+                            new_sub.unsubscribed = subscription.unsubscribed;
+                        }
+                        to_pay+=subscription.prev_amount.clone(); // always needs to be added since if no previous payments it'll just be + 0
+                        new_sub.prev_amount = BigUint::zero(); // always needs to be 0 after a claimfunds.
+                        self.subscription_by_id(&SubId{address:address.clone(), service_id:service_id}).set(new_sub.clone());
+                        // Update total payments
+                        let mut new_service = service.clone();
+                        new_service.payments_total = new_service.payments_total + to_pay.clone();
+                        self.service_by_id(service_id).set(new_service);
+                        total_payments+=to_pay;
+                    }
+                }
+            }
+        }
+        require!(
+            total_payments > BigUint::zero(),
+            "No payments to be claimed."
+        );
+        let digits_off = disc_amount/rate;
+
+        let mut contract_cut_percentage = self.contract_cut_percentage().get();
+        if service.custom_cut{
+            contract_cut_percentage = service.contract_cut_percentage;
+        }
+        let mut contract_cut = self.calculate_cut_amount(&total_payments.clone(), &contract_cut_percentage);
+        contract_cut-= digits_off*BigUint::from(1000u64); // 1% is 1000. We remove digits_off from the cut.
+        let service_payments = total_payments.clone() - contract_cut.clone();
+        if !self.reward_tokens().contains(&service.payment_token) {
+            self.reward_tokens().insert(service.payment_token.clone());
+        }
+        self.contract_rewards(service.payment_token.clone()).update(|val| *val += contract_cut); // Update contract reward for this token.
+        self.send().direct(&caller, &service.payment_token, service.payment_nonce, &service_payments);
+        Ok(())
+    }
+
+
     #[view(getToPay)]
     fn view_get_to_pay(&self, address: ManagedAddress, service_id: u64) -> BigUint{
         let subscription = self.try_get_subscription(address.clone(), service_id);
@@ -593,6 +706,19 @@ pub trait ServiceModule:
         });
         service_id
     }
+    #[only_owner]
+    #[endpoint(setClaimDiscountToken)]
+    fn set_claim_discount_token(&self, payment_token: EgldOrEsdtTokenIdentifier) -> SCResult<()>{
+        self.claim_discount_token().set(payment_token);
+        Ok(())
+    }
+
+    #[only_owner]
+    #[endpoint(setClaimDiscountRate)]
+    fn set_claim_discount_rate(&self, rate: BigUint) -> SCResult<()>{
+        self.claim_discount_rate().set(rate);
+        Ok(())
+    }
 
     #[endpoint(retrieveFunds)]
     #[allow(clippy::too_many_arguments)]
@@ -628,6 +754,35 @@ pub trait ServiceModule:
         self.send().direct(&caller, &service.payment_token, service.payment_nonce, &amount);
     
         Ok(())
+    }
+
+    #[only_owner]
+    #[view(claimContractRewards)]
+    fn claim_contract_rewards(&self){
+        let mut output_payments = ManagedVec::new();
+        let mut egld_payment_amount = BigUint::zero();
+        let caller = self.blockchain().get_caller();
+        for token_id in self.reward_tokens().iter() {
+            let token = token_id.clone();
+            if token_id.is_egld() {
+                egld_payment_amount = self.contract_rewards(token).get();
+            }
+            else{
+                output_payments.push(EsdtTokenPayment::new(
+                    token_id.unwrap_esdt(),
+                    0u64,
+                    self.contract_rewards(token).get(),
+                ));
+            }
+        }   
+        if egld_payment_amount > 0 {
+            self.send()
+                .direct_egld(&caller, &egld_payment_amount);
+        }
+        if !output_payments.is_empty() {
+            self.send()
+                .direct_multi(&caller, &output_payments);
+        }
     }
 
     #[view(getFullServiceData)]
@@ -697,5 +852,27 @@ pub trait ServiceModule:
     #[view(getSubscriptionsByAddress)]
     #[storage_mapper("subscriptionsByAddress")]
     fn subscriptions_by_address(&self, address: &ManagedAddress) -> UnorderedSetMapper<u64>;
+
+
+    // Contract Rewards
+    // Each token amount is stored here
+    #[view(getContractRewards)]
+    #[storage_mapper("contractRewards")]
+    fn contract_rewards(&self, token: EgldOrEsdtTokenIdentifier) -> SingleValueMapper<BigUint>;
+    
+    #[view(getRewardTokens)]
+    #[storage_mapper("rewardTokens")]
+    fn reward_tokens(&self) -> UnorderedSetMapper<EgldOrEsdtTokenIdentifier>;    
+    
+    // Claim discount token
+    #[view(getClaimDiscountToken)]
+    #[storage_mapper("claimDiscountToken")]
+    fn claim_discount_token(&self) -> SingleValueMapper<EgldOrEsdtTokenIdentifier>;
+
+    // Claim discount token
+    #[view(getClaimDiscountRate)]
+    #[storage_mapper("claimDiscountRate")]
+    fn claim_discount_rate(&self) -> SingleValueMapper<BigUint>; // needs to be a biguint (number of tokens for 1% off)
+
 
 }

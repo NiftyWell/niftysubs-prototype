@@ -7,18 +7,24 @@
 elrond_wasm_node::wasm_endpoints! {
     niftysubs
     (
+        claimContractRewards
         claimFunds
         createDiscount
         createService
+        discountClaimFunds
         endService
         fundSubscription
+        getClaimDiscountRate
+        getClaimDiscountToken
         getClaimableById
         getContractCutPercentage
+        getContractRewards
         getFullDiscountData
         getFullServiceData
         getFullSubscriptionData
         getLastValidServiceId
         getPassedPeriods
+        getRewardTokens
         getServiceById
         getServicesByAddress
         getStatus
@@ -29,6 +35,8 @@ elrond_wasm_node::wasm_endpoints! {
         isPaused
         pause
         retrieveFunds
+        setClaimDiscountRate
+        setClaimDiscountToken
         setCustomCut
         setCutPercentage
         subscribe
