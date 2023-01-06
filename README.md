@@ -47,4 +47,6 @@ Add fee for service creators when claiming funds.
 Add discounts for service creators when they claim funds.
 Add discounts for subscribers based on the discount mappers.
 
+## Views
+Active subscribers view (get status for each subscriber in list)
 
